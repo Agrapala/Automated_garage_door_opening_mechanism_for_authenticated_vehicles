@@ -1,64 +1,38 @@
 #include <ESP8266WiFi.h>
-#include <Arduino.h>
-#include <FirebaseESP32.h>
-//#include <FirebaseESP8266.h>
 
+#define WIFI_SSID "FOE-Student"
+#define WIFI_PASSWORD "abcd@1234"
+#define SERVER_IP "10.102.19.140"  // Replace with your server NodeMCU's IP
+#define SERVER_PORT 80
+#define CLIENT_MAC WiFi.macAddress()
 
-#define WIFI_SSID "Your_WiFi_SSID"
-#define WIFI_PASSWORD "Your_WiFi_Password"
-#define FIREBASE_HOST "your-project-id.firebaseio.com"
-#define FIREBASE_AUTH "your-firebase-secret"
-
-#define TRIG_PIN D1
-#define ECHO_PIN D2
-#define DOOR_RELAY D3
-
-FirebaseData fbdo;
-WiFiServer server(80);
+WiFiClient client;
 
 void setup() {
-    Serial.begin(115200);
+    Serial.begin(9600);
+    WiFi.mode(WIFI_STA);
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    Firebase.begin(FIREBASE_HOST, FIREBASE_AUTH);
     
-    pinMode(TRIG_PIN, OUTPUT);
-    pinMode(ECHO_PIN, INPUT);
-    pinMode(DOOR_RELAY, OUTPUT);
-    
-    server.begin();
+
+    while (WiFi.status() != WL_CONNECTED) {
+        Serial.print(".");
+        delay(500);
+    }
+    Serial.println("\nConnected to WiFi");
 }
 
 void loop() {
-    WiFiClient client = server.available();
-    if (client) {
-        String macAddress = client.readStringUntil('\n');  // Read MAC from vehicle
+    Serial.println("Attempting to connect to server...");
 
-        Serial.println("Received MAC: " + macAddress);
-
-        // Call Firebase Cloud Function
-        Firebase.getBool(fbdo, "/garage_system/authorized_macs/" + macAddress);
-        bool isAuthorized = fbdo.boolData();
-
-        if (isAuthorized) {
-            Serial.println("Vehicle Authorized");
-
-            long duration;
-            digitalWrite(TRIG_PIN, LOW);
-            delayMicroseconds(2);
-            digitalWrite(TRIG_PIN, HIGH);
-            delayMicroseconds(10);
-            digitalWrite(TRIG_PIN, LOW);
-            duration = pulseIn(ECHO_PIN, HIGH);
-            float distance = (duration * 0.0343) / 2;  // Convert to cm
-
-            if (distance < 50) {  // Threshold
-                Firebase.setBool(fbdo, "/garage_system/vehicle_detected", true);
-                Serial.println("Vehicle Detected. Waiting for PIN...");
-            }
-        } else {
-            Serial.println("Unauthorized Vehicle!");
-        }
-
-        client.stop();
+    if (client.connect(SERVER_IP, SERVER_PORT)) {  // Check if connection is successful
+        Serial.println("✅ Connected to Server!");
+        client.println(CLIENT_MAC);  // Send MAC address
+        client.flush();
+        Serial.println("MAC Sent: " + CLIENT_MAC);
+        client.stop();  // Close the connection after sending
+    } else {
+        Serial.println("❌ Failed to connect to server!");
     }
+
+    delay(5000);  // Retry every 5 seconds
 }
